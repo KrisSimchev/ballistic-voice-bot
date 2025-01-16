@@ -12,8 +12,8 @@ APP_NAME = "voicebot-ari"
 # Deepgram Configuration
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
 DG_SAMPLE_RATE = 8000
-DG_LANGUAGE = "en"
-DG_MODEL = "nova-2-phonecall"
+DG_LANGUAGE = "bg"
+DG_MODEL = "nova-2"
 
 # RTP Configuration
 RTP_HOST = "0.0.0.0"

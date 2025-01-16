@@ -5,13 +5,13 @@ from deepgram import DeepgramClient, LiveTranscriptionEvents, LiveOptions
 from config import DEEPGRAM_API_KEY, DG_LANGUAGE, DG_MODEL
 from utils import logger
 import audioop
-import struct  # Added for better debug info
 import noisereduce as nr
 import numpy as np
 
 class MediaReceiver:
-    def __init__(self, channel_id):
+    def __init__(self, channel_id, codec="PCMU"):
         self.channel_id = channel_id
+        self.codec = codec  # Codec: PCMU (G.711 mu-law) or PCMA (G.711 A-law)
         self.rtp_port = 0
         self.stop_flag = False
         self.dg_connection = None
@@ -19,8 +19,8 @@ class MediaReceiver:
         self.audio_queue = Queue()
         self.processing_thread = None
         self.buffer = bytearray()
-        self.CHUNK_SIZE = 1920  
-        self.volume_multiplier = 6  # Adjusted chunk size for better processing
+        self.CHUNK_SIZE = 1920  # 240 ms at 8kHz mono
+        self.volume_multiplier = 1.7  # Slight volume boost
 
     def start_deepgram(self):
         try:
@@ -29,32 +29,29 @@ class MediaReceiver:
             
             def on_transcript(client, result, **kwargs):
                 try:
-                    logger.info(f"[Channel {self.channel_id}] Result: {result}")
                     sentence = result.channel.alternatives[0].transcript
                     if sentence.strip():
                         logger.info(f"[Channel {self.channel_id}] Transcript: {sentence}")
                 except (KeyError, AttributeError) as e:
                     logger.error(f"Error processing transcript: {e}")
-                    logger.debug(f"Raw transcript data: {result}")
 
             def on_error(client, error, **kwargs):
                 logger.error(f"Deepgram error for channel {self.channel_id}: {error}")
             
-            def on_close(client, **kwargs):
+            def on_close(client):
                 logger.info(f"Deepgram connection closed for channel {self.channel_id}")
             
             self.dg_connection.on(LiveTranscriptionEvents.Transcript, on_transcript)
             self.dg_connection.on(LiveTranscriptionEvents.Error, on_error)
             self.dg_connection.on(LiveTranscriptionEvents.Close, on_close)
             
-            # Optimized options for phone call audio
             options = LiveOptions(
                 language=DG_LANGUAGE,
                 model=DG_MODEL,
                 sample_rate=8000,
                 encoding="linear16",
                 channels=1,
-                interim_results=False,  # Only final results
+                interim_results=False,
             )
             
             if not self.dg_connection.start(options):
@@ -71,32 +68,54 @@ class MediaReceiver:
             logger.error(f"Deepgram setup failed for channel {self.channel_id}: {e}")
             return False
 
-    def _process_audio_data(self, audio_data):
-        """Preprocess audio data before sending to Deepgram"""
+    def _decode_audio(self, raw_audio):
+        """Decode audio from G.711 mu-law or A-law to linear PCM."""
         try:
-            # Convert to numpy array for noise reduction
-            audio_array = np.frombuffer(audio_data, dtype=np.int16)
+            if self.codec == "PCMU":  # mu-law
+                return audioop.ulaw2lin(raw_audio, 2)
+            elif self.codec == "PCMA":  # A-law
+                return audioop.alaw2lin(raw_audio, 2)
+            else:
+                logger.error(f"Unsupported codec: {self.codec}")
+                return None
+        except Exception as e:
+            logger.error(f"Error decoding audio: {e}")
+            return None
 
-            # Perform noise reduction
+    def _process_audio_data(self, audio_data):
+        """Preprocess audio data before sending to Deepgram."""
+        try:
+            audio_array = np.frombuffer(audio_data, dtype=np.int16)
+            
+            # High-pass filter to remove low-frequency noise
+            alpha = 0.95
+            shifted = np.roll(audio_array, 1)
+            highpassed = audio_array.astype(np.float32) - alpha * shifted.astype(np.float32)
+            highpassed[0] = audio_array[0]  # Avoid initial jump
+            audio_array = highpassed.astype(np.int16)
+
+            # Noise reduction
             reduced_noise = nr.reduce_noise(y=audio_array, sr=8000, prop_decrease=0.7)
 
             # Convert back to bytes
             processed_data = reduced_noise.astype(np.int16).tobytes()
 
-            # Get RMS before amplification
-            rms_before = audioop.rms(processed_data, 2)
+            # DC offset removal
+            avg_val = audioop.avg(processed_data, 2)
+            if avg_val != 0:
+                processed_data = audioop.bias(processed_data, 2, -avg_val)
 
-            # Amplify the audio significantly more
-            amplified_data = audioop.mul(processed_data, 2, self.volume_multiplier)
+            # Dynamic gain control (AGC)
+            target_rms = 1500
+            current_rms = audioop.rms(processed_data, 2)
+            if current_rms > 0:
+                ratio = float(target_rms) / current_rms
+                processed_data = audioop.mul(processed_data, 2, ratio)
 
-            # Get RMS after amplification
-            rms_after = audioop.rms(amplified_data, 2)
+            # Apply a slight volume boost after dynamic gain control
+            processed_data = audioop.mul(processed_data, 2, self.volume_multiplier)
 
-            # Log audio levels every 100 packets
-            if self.packets_received % 100 == 0:
-                logger.debug(f"Audio levels - Before: {rms_before}, After: {rms_after}")
-
-            return amplified_data
+            return processed_data
 
         except Exception as e:
             logger.error(f"Error processing audio data: {e}")
@@ -105,29 +124,21 @@ class MediaReceiver:
     def _process_audio_queue(self):
         while not self.stop_flag:
             try:
-                try:
-                    audio_data = self.audio_queue.get(timeout=0.1)
-                except Empty:
-                    continue
-
+                audio_data = self.audio_queue.get(timeout=0.1)
                 if self.dg_connection and audio_data:
-                    # Add to buffer
                     self.buffer.extend(audio_data)
 
-                    # Process and send when we have enough data
                     while len(self.buffer) >= self.CHUNK_SIZE:
                         chunk = bytes(self.buffer[:self.CHUNK_SIZE])
                         self.buffer = self.buffer[self.CHUNK_SIZE:]
 
-                        # Process the audio chunk
-                        processed_chunk = self._process_audio_data(chunk)
-
-                        try:
+                        decoded_audio = self._decode_audio(chunk)
+                        if decoded_audio:
+                            processed_chunk = self._process_audio_data(decoded_audio)
                             self.dg_connection.send(processed_chunk)
-                        except Exception as e:
-                            logger.error(f"Error sending audio to Deepgram: {e}")
-                            self.reconnect_deepgram()
 
+            except Empty:
+                continue
             except Exception as e:
                 logger.error(f"Error in audio processing thread: {e}")
 
@@ -138,20 +149,14 @@ class MediaReceiver:
             def process_packet(packet):
                 if self.stop_flag:
                     return True
-
                 if packet.haslayer(IP) and packet.haslayer(UDP):
-                    dst_port = packet[UDP].dport
-
-                    if dst_port == self.rtp_port:
-                        try:
-                            audio_data = bytes(packet[UDP].payload)[12:]  # Skip RTP header
-                            if audio_data:
-                                self.audio_queue.put(audio_data)
-                                self.packets_received += 1
-                                if self.packets_received % 100 == 0:
-                                    logger.info(f"Processed {self.packets_received} packets for channel {self.channel_id}")
-                        except Exception as e:
-                            logger.error(f"Error processing packet: {e}")
+                    if packet[UDP].dport == self.rtp_port:
+                        rtp_payload = bytes(packet[UDP].payload)[12:]  # Skip RTP header
+                        if rtp_payload:
+                            self.audio_queue.put(rtp_payload)
+                            self.packets_received += 1
+                            if self.packets_received % 100 == 0:
+                                logger.info(f"Processed {self.packets_received} packets for channel {self.channel_id}")
                 return False
 
             sniff(filter=f"udp port {self.rtp_port}", prn=process_packet, stop_filter=lambda x: self.stop_flag)
@@ -161,25 +166,11 @@ class MediaReceiver:
         finally:
             self.cleanup()
 
-    def reconnect_deepgram(self):
-        try:
-            if self.dg_connection:
-                self.dg_connection.finish()
-            self.start_deepgram()
-        except Exception as e:
-            logger.error(f"Failed to reconnect to Deepgram: {e}")
-
     def cleanup(self):
         logger.info(f"Cleaning up channel {self.channel_id}")
         self.stop_flag = True
-
         if self.processing_thread and self.processing_thread.is_alive():
             self.processing_thread.join(timeout=5)
-
         if self.dg_connection:
-            try:
-                self.dg_connection.finish()
-            except Exception as e:
-                logger.error(f"Error closing Deepgram connection: {e}")
-
+            self.dg_connection.finish()
         self.dg_connection = None
