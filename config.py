@@ -18,3 +18,7 @@ DG_MODEL = "nova-2"
 # RTP Configuration
 RTP_HOST = "0.0.0.0"
 DEFAULT_RTP_PORT = 12000
+
+# 11 labs Configuration
+ELEVEN_LABS_API_KEY = os.getenv("ELEVEN_LABS_API_KEY")
+ELEVEN_LABS_VOICE_ID = os.getenv("ELEVEN_LABS_VOICE_ID")

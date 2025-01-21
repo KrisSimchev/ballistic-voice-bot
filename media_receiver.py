@@ -7,6 +7,8 @@ from utils import logger
 import audioop
 import noisereduce as nr
 import numpy as np
+from conversation_handler import ConversationHandler
+from tts_handler import TTSHandler
 
 class MediaReceiver:
     def __init__(self, channel_id, codec="PCMU"):
@@ -21,7 +23,9 @@ class MediaReceiver:
         self.buffer = bytearray()
         self.CHUNK_SIZE = 1920  # 240 ms at 8kHz mono
         self.volume_multiplier = 1.7  # Slight volume boost
-
+        self.conversation_handler = ConversationHandler(TTSHandler())
+        self.last_transcript_time = time.time()
+    
     def start_deepgram(self):
         try:
             deepgram = DeepgramClient(api_key=DEEPGRAM_API_KEY)
@@ -31,10 +35,21 @@ class MediaReceiver:
                 try:
                     sentence = result.channel.alternatives[0].transcript
                     if sentence.strip():
+                        current_time = time.time()
                         logger.info(f"[Channel {self.channel_id}] Transcript: {sentence}")
+                        
+                        # Get AI response if appropriate
+                        response = self.conversation_handler.handle_transcript(
+                            sentence, 
+                            current_time
+                        )
+                        
+                        # If we got a response, generate and stream TTS
+                        if response:
+                            self.conversation_handler.tts_handler.generate_and_stream(response)
+                            
                 except (KeyError, AttributeError) as e:
                     logger.error(f"Error processing transcript: {e}")
-
             def on_error(client, error, **kwargs):
                 logger.error(f"Deepgram error for channel {self.channel_id}: {error}")
             
