@@ -39,14 +39,15 @@ class MediaReceiver:
                         logger.info(f"[Channel {self.channel_id}] Transcript: {sentence}")
                         
                         # Get AI response if appropriate
-                        response = self.conversation_handler.handle_transcript(
+                        self.conversation_handler.handle_transcript(
                             sentence, 
                             current_time
                         )
                         
-                        # If we got a response, generate and stream TTS
-                        if response:
-                            self.conversation_handler.tts_handler.generate_and_stream(response)
+                        # If we have detected a silence from deepgram
+                        if result.speech_final:
+                            logger.info(f"[Channel {self.channel_id}] Detected end of speech")
+                            self.conversation_handler.generate_and_stream(current_time)
                             
                 except (KeyError, AttributeError) as e:
                     logger.error(f"Error processing transcript: {e}")
@@ -67,6 +68,7 @@ class MediaReceiver:
                 encoding="linear16",
                 channels=1,
                 interim_results=False,
+                utterance_end_ms=1000,
             )
             
             if not self.dg_connection.start(options):
