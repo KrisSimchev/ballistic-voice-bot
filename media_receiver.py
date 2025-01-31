@@ -7,11 +7,12 @@ from utils import logger
 import audioop
 import noisereduce as nr
 import numpy as np
+import time
 from conversation_handler import ConversationHandler
 from tts_handler import TTSHandler
 
 class MediaReceiver:
-    def __init__(self, channel_id, codec="PCMU"):
+    def __init__(self, channel_id,  codec="PCMU"):
         self.channel_id = channel_id
         self.codec = codec  # Codec: PCMU (G.711 mu-law) or PCMA (G.711 A-law)
         self.rtp_port = 0
@@ -23,7 +24,7 @@ class MediaReceiver:
         self.buffer = bytearray()
         self.CHUNK_SIZE = 1920  # 240 ms at 8kHz mono
         self.volume_multiplier = 1.7  # Slight volume boost
-        self.conversation_handler = ConversationHandler(TTSHandler())
+        self.conversation_handler = ConversationHandler(TTSHandler(channel_id))
         self.last_transcript_time = time.time()
     
     def start_deepgram(self):
@@ -54,7 +55,7 @@ class MediaReceiver:
             def on_error(client, error, **kwargs):
                 logger.error(f"Deepgram error for channel {self.channel_id}: {error}")
             
-            def on_close(client):
+            def on_close(client,**kwargs):
                 logger.info(f"Deepgram connection closed for channel {self.channel_id}")
             
             self.dg_connection.on(LiveTranscriptionEvents.Transcript, on_transcript)
@@ -67,7 +68,7 @@ class MediaReceiver:
                 sample_rate=8000,
                 encoding="linear16",
                 channels=1,
-                interim_results=False,
+                interim_results=True,
                 utterance_end_ms=1000,
             )
             

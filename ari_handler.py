@@ -12,6 +12,19 @@ active_channels_lock = threading.Lock()
 
 def handle_stasis_start(channel_id):
     try:
+        # Get the channel object from ARI
+        response = requests.get(
+            f"{ARI_BASE_URL}/channels/{channel_id}",
+            auth=(ARI_USERNAME, ARI_PASSWORD)
+        )
+        
+        if response.status_code != 200:
+            logger.error(f"Failed to get channel: {response.text}")
+            return
+        
+        channel = response.json()
+
+    
         response = requests.get(
             f"{ARI_BASE_URL}/channels/{channel_id}/rtp_statistics",
             auth=(ARI_USERNAME, ARI_PASSWORD)
@@ -48,8 +61,10 @@ def handle_stasis_start(channel_id):
         if not rtp_port:
             logger.error(f"Could not determine RTP port for channel {channel_id}")
             return
-            
+        
+        logger.info(f"Initiazlizing Media Receiver")
         receiver = MediaReceiver(channel_id)
+        logger.info(f"setting media receiver port {rtp_port}")
         receiver.rtp_port = rtp_port
         
         if not receiver.start_deepgram():
@@ -58,7 +73,8 @@ def handle_stasis_start(channel_id):
             
         with active_channels_lock:
             active_channels[channel_id] = receiver
-            
+        
+        logger.info(f"Creating thread")
         thread = threading.Thread(target=receiver.run)
         thread.daemon = True
         thread.start()

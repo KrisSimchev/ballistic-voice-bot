@@ -1,75 +1,85 @@
 import os
-from elevenlabs import client, generate, Voice, VoiceSettings
 import wave
+import logging
+import requests
 import numpy as np
 from typing import Optional
-import logging
-from config import ELEVEN_LABS_API_KEY, ELEVEN_LABS_VOICE_ID
+from elevenlabs import ElevenLabs
+from config import (
+    ELEVEN_LABS_API_KEY,
+    ELEVEN_LABS_VOICE_ID,
+    ARI_BASE_URL,
+    ARI_USERNAME,
+    ARI_PASSWORD,
+)
+from scipy.signal import resample_poly
+
 logger = logging.getLogger(__name__)
 
 class TTSHandler:
-    def __init__(self, channel=None):
-        self.channel = channel
-        self.voice_settings = VoiceSettings(
-            stability=0.5,
-            similarity_boost=0.75,
-            style=0.0,
-            use_speaker_boost=True
-        )
-        self.output_dir = "tts_audio"
-        # Create output directory if it doesn't exist
-        if not os.path.exists(self.output_dir):
-            os.makedirs(self.output_dir)
-            
-    def synthesize_and_play(self, text: str) -> None:
-        """Generate TTS audio and play it through Asterisk"""
+    def __init__(self, channel_id: str):
+        self.channel_id = channel_id
+        self.client = ElevenLabs(api_key=ELEVEN_LABS_API_KEY)
+        self.asterisk_sounds_dir = "/var/lib/asterisk/sounds/tts_audio"
+
+        os.makedirs(self.asterisk_sounds_dir, exist_ok=True)
+
+    def _play_through_ari(self, base_sound_name: str) -> None:
         try:
-            # Generate unique filename
-            filename = f"{self.output_dir}/tts_{hash(text)}.wav"
+            play_url = f"{ARI_BASE_URL}/channels/{self.channel_id}/play"
+            params = {
+                "media": f"sound:tts_audio/{base_sound_name}"
+            }
+            response = requests.post(play_url, params=params, auth=(ARI_USERNAME, ARI_PASSWORD))
             
-            # Generate audio if file doesn't exist
-            if not os.path.exists(filename):
-                # Generate audio from ElevenLabs
-                audio = generate(
-                    text=text,
-                    voice=ELEVEN_LABS_VOICE_ID,
-                    model="eleven_monolingual_v1",
-                    api_key=ELEVEN_LABS_API_KEY,
-                    voice_settings=self.voice_settings
+            if not response.ok:
+                logger.error(
+                    f"Failed to queue playback (status {response.status_code}): {response.text}"
                 )
-                
-                # Convert to numpy array
-                audio_array = np.frombuffer(audio, dtype=np.int16)
-                
-                # Increase volume (adjust multiplier as needed)
-                audio_array = np.clip(audio_array * 2.0, -32768, 32767).astype(np.int16)
-                
-                # Save as WAV file
-                with wave.open(filename, 'wb') as wav_file:
-                    wav_file.setnchannels(1)  # Mono
-                    wav_file.setsampwidth(2)  # 16-bit
-                    wav_file.setframerate(24000)  # 24kHz
-                    wav_file.writeframes(audio_array.tobytes())
-            
-            # Play through Asterisk ARI
-            if self.channel:
-                try:
-                    self.channel.play(media='sound:' + filename)
-                    logger.info(f"Playing TTS audio: {text[:50]}...")
-                except Exception as e:
-                    logger.error(f"Error playing audio through Asterisk: {e}")
-            
+                return
+
+            logger.info("Successfully queued audio playback in ARI.")
         except Exception as e:
-            logger.error(f"Error in TTS synthesis: {e}")
-            
-    def cleanup(self):
-        """Clean up old TTS files"""
-        try:
-            for file in os.listdir(self.output_dir):
-                if file.startswith("tts_") and file.endswith(".wav"):
-                    file_path = os.path.join(self.output_dir, file)
-                    # Delete files older than 1 hour
-                    if os.path.getmtime(file_path) < time.time() - 3600:
-                        os.remove(file_path)
-        except Exception as e:
-            logger.error(f"Error cleaning up TTS files: {e}")
+            logger.error(f"Error in ARI playback request: {e}")
+
+    def synthesize_and_play(self, ai_answer: str) -> None:
+        base_name = f"tts_{abs(hash(ai_answer))}"
+        asterisk_wav_path = os.path.join(self.asterisk_sounds_dir, base_name + ".wav")
+
+        if not os.path.exists(asterisk_wav_path):
+            try:
+                audio_generator = self.client.text_to_speech.convert(
+                    text=ai_answer,
+                    voice_id=ELEVEN_LABS_VOICE_ID,
+                    model_id="eleven_monolingual_v1",
+                    output_format="pcm_24000",
+                )
+                audio_data = b''.join(chunk for chunk in audio_generator)
+
+                # Convert to NumPy int16
+                audio_array_24k = np.frombuffer(audio_data, dtype=np.int16)
+
+                # Increase volume a bit (2.0 doubles amplitude) ---
+                audio_array_24k = np.clip(audio_array_24k * 2.0, -32768, 32767).astype(np.int16)
+
+                # Downsample to 8 kHz (telephony-friendly) using scipy.signal.resample_poly ---
+                orig_rate = 24000
+                desired_rate = 8000
+                audio_array_8k = resample_poly(audio_array_24k, up=1, down=3)  # from 24k -> 8k
+                audio_array_8k = audio_array_8k.astype(np.int16)
+
+                # Write out the 8 kHz mono WAV
+                with wave.open(asterisk_wav_path, 'wb') as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)  # 16-bit
+                    wf.setframerate(desired_rate)
+                    wf.writeframes(audio_array_8k.tobytes())
+
+                logger.info(f"Wrote final WAV to: {asterisk_wav_path}")
+
+            except Exception as e:
+                logger.error(f"Error during TTS generation or saving WAV: {e}")
+                return
+
+        self._play_through_ari(base_name)
+        logger.info("Playing TTS audio on the phone...")

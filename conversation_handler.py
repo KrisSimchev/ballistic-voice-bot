@@ -5,10 +5,12 @@ from typing_extensions import override
 from openai import AssistantEventHandler
 from openai import OpenAI
 import re
+from utils import logger
 
 class ConversationHandler:
     def __init__(self, tts_handler: TTSHandler):
         self.tts_handler = tts_handler
+        logger.info(f"Initialized TTS")
         self.last_response_time = 0
         self.minimum_response_time = 5
         self.is_speaking = False
@@ -77,6 +79,7 @@ class ConversationHandler:
         return None
 
     def generate_and_stream(self, timestamp: float) -> None:
+        logger.info(f"Sending to tts: {self.accumulated_transcript}")
         self.tts_handler.synthesize_and_play(self.accumulated_transcript)
         return 
         # If we try to interrupt the AI too fast
