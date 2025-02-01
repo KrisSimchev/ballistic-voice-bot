@@ -28,6 +28,7 @@ class TTSHandler:
         # Queue management
         self.audio_queue = deque()
         self.currently_playing = None
+        self.current_playback_id = None  # Track current playback ID
         self.queue_lock = Lock()
         self.playback_thread = Thread(target=self._process_queue, daemon=True)
         self.playback_thread.start()
@@ -70,6 +71,36 @@ class TTSHandler:
             logger.error(f"Error in ARI playback request: {e}")
             return None
 
+    def _stop_playback(self, playback_id: str) -> bool:
+        """Stop a specific playback through ARI."""
+        try:
+            stop_url = f"{ARI_BASE_URL}/playbacks/{playback_id}"
+            response = requests.delete(stop_url, auth=(ARI_USERNAME, ARI_PASSWORD))
+            return response.ok
+        except Exception as e:
+            logger.error(f"Error stopping playback: {e}")
+            return False
+
+    def clear_queue(self) -> None:
+        """Clear the audio queue and stop current playback."""
+        logger.info("Clearing audio queue and stopping current playback...")
+        
+        # Clear the queue
+        with self.queue_lock:
+            self.audio_queue.clear()
+            
+            # Stop current playback if any
+            if self.current_playback_id:
+                if self._stop_playback(self.current_playback_id):
+                    logger.info(f"Stopped current playback: {self.current_playback_id}")
+                else:
+                    logger.error(f"Failed to stop current playback: {self.current_playback_id}")
+                
+                self.current_playback_id = None
+                self.currently_playing = None
+        
+        logger.info("Queue cleared and playback stopped")
+
     def _process_queue(self):
         """Background thread to process the audio queue."""
         while True:
@@ -80,6 +111,7 @@ class TTSHandler:
                 
                 playback_id = self._play_through_ari(base_name)
                 if playback_id:
+                    self.current_playback_id = playback_id
                     # Wait for playback to complete
                     while True:
                         status = self._get_playback_status(playback_id)
@@ -88,6 +120,7 @@ class TTSHandler:
                         time.sleep(0.1)  # Check every 100ms
                 
                 self.currently_playing = None
+                self.current_playback_id = None
             
             time.sleep(0.1)  # Prevent CPU spinning
 
