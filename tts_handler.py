@@ -53,6 +53,7 @@ class TTSHandler:
                     voice_id=ELEVEN_LABS_VOICE_ID,
                     model_id="eleven_monolingual_v1",
                     output_format="pcm_24000",
+                    language_code="BG"
                 )
                 audio_data = b''.join(chunk for chunk in audio_generator)
 
