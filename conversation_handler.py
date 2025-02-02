@@ -6,18 +6,19 @@ from openai import AssistantEventHandler
 from openai import OpenAI
 import re
 from utils import logger
+from openai_functions.OpenAIClient import openai_client
 
 class ConversationHandler:
-    def __init__(self, tts_handler: TTSHandler):
+    def __init__(self, openai_thread_id, tts_handler: TTSHandler):
         self.tts_handler = tts_handler
         logger.info(f"Initialized TTS")
         self.last_response_time = 0
         self.minimum_response_time = 5
         self.is_speaking = False
         self.accumulated_transcript = ""
-        #self.openai_client = client
-        #self.openai_assistant = assistant
-        #self.openai_thread = client.beta.threads.create()
+        self.openai_client = openai_client.get_client()
+        self.openai_assistant_id = openai_client.get_assistant_id()
+        self.openai_thread_id = openai_thread_id
         self.number_of_responses = 1
         self.current_response_number = 0
         self.is_generating = False
@@ -79,8 +80,10 @@ class ConversationHandler:
         return None
 
     def generate_and_stream(self, timestamp: float) -> None:
-        logger.info(f"Sending to tts: {self.accumulated_transcript}")
-        self.tts_handler.synthesize_and_play(self.accumulated_transcript)
+        tts_transcripts = self.accumulated_transcript
+        self.accumulated_transcript =""
+        logger.info(f"Sending to tts: {tts_transcripts}")
+        self.tts_handler.synthesize_and_play(tts_transcripts)
         return 
         # If we try to interrupt the AI too fast
         if time.time() - self.last_response_time < self.minimum_response_time:

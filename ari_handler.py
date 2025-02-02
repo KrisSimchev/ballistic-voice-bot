@@ -6,6 +6,7 @@ from scapy.all import sniff, IP, UDP
 from config import ARI_BASE_URL, ARI_USERNAME, ARI_PASSWORD, APP_NAME
 from utils import logger
 from media_receiver import MediaReceiver
+from openai_functions.OpenAIClient import openai_client
 
 active_channels = {}
 active_channels_lock = threading.Lock()
@@ -62,8 +63,12 @@ def handle_stasis_start(channel_id):
             logger.error(f"Could not determine RTP port for channel {channel_id}")
             return
         
+        logger.info(f"Creating OPENAI thread")
+        openai_thread = openai_client.get_client().beta.threads.create()
+        openai_thread_id = openai_thread.id
+
         logger.info(f"Initiazlizing Media Receiver")
-        receiver = MediaReceiver(channel_id)
+        receiver = MediaReceiver(channel_id, openai_thread_id)
         logger.info(f"setting media receiver port {rtp_port}")
         receiver.rtp_port = rtp_port
         
@@ -74,6 +79,7 @@ def handle_stasis_start(channel_id):
         with active_channels_lock:
             active_channels[channel_id] = receiver
         
+
         logger.info(f"Creating thread")
         thread = threading.Thread(target=receiver.run)
         thread.daemon = True

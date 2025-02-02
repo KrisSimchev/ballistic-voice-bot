@@ -12,9 +12,9 @@ from conversation_handler import ConversationHandler
 from tts_handler import TTSHandler
 
 class MediaReceiver:
-    def __init__(self, channel_id,  codec="PCMU"):
+    def __init__(self, channel_id, openai_thread_id,  codec="PCMU"):
         self.channel_id = channel_id
-        self.codec = codec  # Codec: PCMU (G.711 mu-law) or PCMA (G.711 A-law)
+        self.codec = codec 
         self.rtp_port = 0
         self.stop_flag = False
         self.dg_connection = None
@@ -24,8 +24,9 @@ class MediaReceiver:
         self.buffer = bytearray()
         self.CHUNK_SIZE = 1920  # 240 ms at 8kHz mono
         self.volume_multiplier = 1.7  # Slight volume boost
-        self.conversation_handler = ConversationHandler(TTSHandler(channel_id))
+        self.conversation_handler = ConversationHandler(openai_thread_id, TTSHandler(channel_id))
         self.last_transcript_time = time.time()
+        self.openai_thread_id = openai_thread_id
     
     def start_deepgram(self):
         try:
@@ -45,10 +46,8 @@ class MediaReceiver:
                             current_time
                         )
                         
-                        # If we have detected a silence from deepgram
-                        if result.speech_final:
-                            logger.info(f"[Channel {self.channel_id}] Detected end of speech")
-                            self.conversation_handler.generate_and_stream(current_time)
+                        logger.info(f"[Channel {self.channel_id}] Detected end of speech")
+                        self.conversation_handler.generate_and_stream(current_time)
                             
                 except (KeyError, AttributeError) as e:
                     logger.error(f"Error processing transcript: {e}")
@@ -68,8 +67,8 @@ class MediaReceiver:
                 sample_rate=8000,
                 encoding="linear16",
                 channels=1,
-                interim_results=True,
-                utterance_end_ms=1000,
+                interim_results=False,
+                endpointing=600,
             )
             
             if not self.dg_connection.start(options):

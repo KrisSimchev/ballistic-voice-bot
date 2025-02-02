@@ -22,3 +22,7 @@ DEFAULT_RTP_PORT = 12000
 # 11 labs Configuration
 ELEVEN_LABS_API_KEY = os.getenv("ELEVEN_LABS_API_KEY")
 ELEVEN_LABS_VOICE_ID = os.getenv("ELEVEN_LABS_VOICE_ID")
+
+# OPENAI Configuration
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
