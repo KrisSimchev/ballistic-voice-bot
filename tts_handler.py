@@ -134,29 +134,29 @@ class TTSHandler:
                     text=ai_answer,
                     voice_id=ELEVEN_LABS_VOICE_ID,
                     model_id="eleven_flash_v2_5",
-                    output_format="pcm_24000",
+                    output_format="pcm_8000",
                     language_code="bg"
                 )
                 audio_data = b''.join(chunk for chunk in audio_generator)
 
                 # Convert to NumPy int16
-                audio_array_24k = np.frombuffer(audio_data, dtype=np.int16)
+                audio_array = np.frombuffer(audio_data, dtype=np.int16)
 
                 # Increase volume
-                audio_array_24k = np.clip(audio_array_24k * 2.0, -32768, 32767).astype(np.int16)
+                audio_array = np.clip(audio_array * 2.0, -32768, 32767).astype(np.int16)
 
                 # Downsample to 8 kHz
-                orig_rate = 24000
-                desired_rate = 8000
-                audio_array_8k = resample_poly(audio_array_24k, up=1, down=3)
-                audio_array_8k = audio_array_8k.astype(np.int16)
+                # orig_rate = 24000
+                # desired_rate = 8000
+                # audio_array_8k = resample_poly(audio_array_24k, up=1, down=3)
+                # audio_array_8k = audio_array_8k.astype(np.int16)
 
                 # Write WAV file
                 with wave.open(asterisk_wav_path, 'wb') as wf:
                     wf.setnchannels(1)
                     wf.setsampwidth(2)
-                    wf.setframerate(desired_rate)
-                    wf.writeframes(audio_array_8k.tobytes())
+                    wf.setframerate(8000)
+                    wf.writeframes(audio_array.tobytes())
 
                 logger.info(f"Wrote final WAV to: {asterisk_wav_path}")
 
