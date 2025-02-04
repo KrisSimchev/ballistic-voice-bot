@@ -22,7 +22,6 @@ class ConversationHandler:
         self.number_of_responses = 1
         self.current_response_number = 0
         self.is_generating = False
-        self.is_waiting = False
         self.is_interrupted = False
 
     def handle_transcript(self, transcript: str, timestamp: float) -> None:
@@ -46,12 +45,12 @@ class ConversationHandler:
 
             # If we try to interrupt it
             if self.is_generating:
-                self.is_waiting = True
-                self.tts_handler.synthesize_and_play("Един момент.")
+                self.is_interrupted = True
+                # self.tts_handler.synthesize_and_play("Един момент.")
                 while self.is_generating:
                     time.sleep(0.1)
             
-            self.is_waiting = False
+            self.is_interrupted = False
         
             self.is_generating = True
 
@@ -60,7 +59,10 @@ class ConversationHandler:
                 thread_id=self.openai_thread.id,
                 role="user",
                 content=self.accumulated_transcript
-            )       
+            )
+
+            # Resetting the transcripts
+            self.accumulated_transcript = ""
 
             # Creating a stream for the response
             try:
@@ -74,6 +76,7 @@ class ConversationHandler:
             finally:
                 self.is_generating = False
 
-        # Resetting the transcripts
-        self.accumulated_transcript = ""
         return None
+
+    def stop_speaking(self):
+        self.tts_handler.clear_queue()

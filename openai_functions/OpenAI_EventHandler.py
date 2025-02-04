@@ -31,14 +31,14 @@ class OpenAI_EventHandler(AssistantEventHandler):
                 self.current_sentence.rfind('?')
             )
             
-            if last_end != -1:
+            if last_end != -1 and not self.is_interrupted:
                 # Get the complete sentence
                 complete_sentence = self.current_sentence[:last_end + 1].strip()
                 # Keep the remaining text
                 self.current_sentence = self.current_sentence[last_end + 1:].strip()
                 
                 # Send to TTS if it's a valid sentence and we haven't exceeded responses
-                if complete_sentence and not self.is_interrupted:
+                if complete_sentence:
                     self.conversation_handler.tts_handler.synthesize_and_play(complete_sentence)
         
     @override

@@ -36,21 +36,27 @@ class MediaReceiver:
             def on_transcript(client, result, **kwargs):
                 try:
                     sentence = result.channel.alternatives[0].transcript
+                    is_final = result.is_final
                     if sentence.strip():
+                        self.conversation_handler.stop_speaking()
+
                         current_time = time.time()
-                        logger.info(f"[Channel {self.channel_id}] Transcript: {sentence}")
-                        
-                        # Get AI response if appropriate
+
                         self.conversation_handler.handle_transcript(
                             sentence, 
                             current_time
                         )
-                        
-                        # logger.info(f"[Channel {self.channel_id}] Detected end of speech")
-                        self.conversation_handler.generate_and_stream(current_time)
+
+                        if is_final:
+                            
+                            logger.info(f"[Channel {self.channel_id}] Transcript: {sentence}")
+                            
+                            # logger.info(f"[Channel {self.channel_id}] Detected end of speech")
+                            self.conversation_handler.generate_and_stream_test(current_time)
                             
                 except (KeyError, AttributeError) as e:
                     logger.error(f"Error processing transcript: {e}")
+                    
             def on_error(client, error, **kwargs):
                 logger.error(f"Deepgram error for channel {self.channel_id}: {error}")
             
@@ -67,8 +73,9 @@ class MediaReceiver:
                 sample_rate=8000,
                 encoding="linear16",
                 channels=1,
-                interim_results=False,
-                endpointing=600,
+                interim_results=True,
+                utterance_end_ms=550,
+                # endpointing=600,
             )
             
             if not self.dg_connection.start(options):
