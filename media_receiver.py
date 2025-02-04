@@ -23,7 +23,7 @@ class MediaReceiver:
         self.processing_thread = None
         self.buffer = bytearray()
         self.CHUNK_SIZE = 1920  # 240 ms at 8kHz mono
-        self.volume_multiplier = 1.7  # Slight volume boost
+        self.volume_multiplier = 1.85  # Slight volume boost
         self.conversation_handler = ConversationHandler(openai_thread_id, TTSHandler(channel_id))
         self.last_transcript_time = time.time()
         self.openai_thread_id = openai_thread_id
@@ -46,7 +46,7 @@ class MediaReceiver:
                             current_time
                         )
                         
-                        logger.info(f"[Channel {self.channel_id}] Detected end of speech")
+                        # logger.info(f"[Channel {self.channel_id}] Detected end of speech")
                         self.conversation_handler.generate_and_stream(current_time)
                             
                 except (KeyError, AttributeError) as e:

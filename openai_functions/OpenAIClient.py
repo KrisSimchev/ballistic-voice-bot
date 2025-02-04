@@ -62,6 +62,25 @@ class OpenAIClient:
                     model="gpt-4o",
                     tools=[{
                         "type": "file_search",
+                        "type": "function",
+                        "function": {
+                            "name": "track_order",
+                            "description": "Tracking orders by customer's either: 1. Phone number 2. Email 3. Order number",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "order_identifier": {
+                                        "type": "string",
+                                        "description": "The customer's either email, phone number or order number"
+                                    }
+                                },
+                                "required": [
+                                    "order_identifier"
+                                ],
+                                "additionalProperties": False
+                            },
+                                "strict": True
+                        },
                     }
                     ],
                     tool_resources={"file_search": {"vector_store_ids": [vector_store_id]}},

@@ -7,14 +7,14 @@ from openai import OpenAI
 import re
 from utils import logger
 from openai_functions.OpenAIClient import openai_client
+from openai_functions.OpenAI_EventHandler import OpenAI_EventHandler
 
 class ConversationHandler:
     def __init__(self, openai_thread_id, tts_handler: TTSHandler):
         self.tts_handler = tts_handler
         logger.info(f"Initialized TTS")
         self.last_response_time = 0
-        self.minimum_response_time = 5
-        self.is_speaking = False
+        self.minimum_response_time = 0.1 # 100 miliseconds
         self.accumulated_transcript = ""
         self.openai_client = openai_client.get_client()
         self.openai_assistant_id = openai_client.get_assistant_id()
@@ -22,56 +22,8 @@ class ConversationHandler:
         self.number_of_responses = 1
         self.current_response_number = 0
         self.is_generating = False
-
-    class OpenAI_EventHandler(AssistantEventHandler):
-        def __init__(self, conversation_handler):
-            self.conversation_handler = conversation_handler
-            self.current_sentence = ""
-            
-        @override
-        def on_text_created(self, text) -> None:
-            print(f"\nassistant > ", end="", flush=True)
-            
-        @override
-        def on_text_delta(self, delta, snapshot):
-            print(delta.value, end="", flush=True)
-            
-            # Add new text to our current sentence
-            self.current_sentence += delta.value
-            
-            # Look for sentence endings
-            if any(ending in self.current_sentence for ending in ['.', '!', '?']):
-                # Find the last sentence ending
-                last_end = max(
-                    self.current_sentence.rfind('.'),
-                    self.current_sentence.rfind('!'),
-                    self.current_sentence.rfind('?')
-                )
-                
-                if last_end != -1:
-                    # Get the complete sentence
-                    complete_sentence = self.current_sentence[:last_end + 1].strip()
-                    # Keep the remaining text
-                    self.current_sentence = self.current_sentence[last_end + 1:].strip()
-                    
-                    # Send to TTS if it's a valid sentence and we haven't exceeded responses
-                    if complete_sentence and not self.conversation_handler.current_response_number > self.conversation_handler.number_of_responses:
-                        self.conversation_handler.tts_handler.synthesize_and_play(complete_sentence)
-            
-        @override
-        def on_tool_call_created(self, tool_call):
-            print(f"\nassistant > {tool_call.type}\n", flush=True)
-
-        @override
-        def on_tool_call_delta(self, delta, snapshot):
-            if delta.type == 'code_interpreter':
-                if delta.code_interpreter.input:
-                    print(delta.code_interpreter.input, end="", flush=True)
-                if delta.code_interpreter.outputs:
-                    print(f"\n\noutput >", flush=True)
-                for output in delta.code_interpreter.outputs:
-                    if output.type == "logs":
-                        print(f"\n{output.logs}", flush=True)
+        self.is_waiting = False
+        self.is_interrupted = False
 
     def handle_transcript(self, transcript: str, timestamp: float) -> None:
         """Handle incoming transcripts and determine when to trigger AI response"""
@@ -79,26 +31,28 @@ class ConversationHandler:
             self.accumulated_transcript += " " + transcript.strip()
         return None
 
-    def generate_and_stream(self, timestamp: float) -> None:
+    def generate_and_stream_test(self, timestamp: float) -> None:
         tts_transcripts = self.accumulated_transcript
         self.accumulated_transcript =""
         logger.info(f"Sending to tts: {tts_transcripts}")
         self.tts_handler.synthesize_and_play(tts_transcripts)
-        return 
-        # If we try to interrupt the AI too fast
-        if time.time() - self.last_response_time < self.minimum_response_time:
-            return None
-        
-        self.last_response_time = timestamp
-        self.current_response_number += 1
-
-        # If we try to interrupt it
-        if self.current_response_number > self.number_of_responses:
-            self.tts_handler.synthesize_and_play("Please wait a second.")
-            while self.is_generating:
-                time.sleep(0.1)
-        
+        return
+    
+    def generate_and_stream(self, timestamp: float) -> None:
         if self.accumulated_transcript.strip():
+            # If we try to interrupt the AI too fast
+            if time.time() - self.last_response_time < self.minimum_response_time:
+                return None
+
+            # If we try to interrupt it
+            if self.is_generating:
+                self.is_waiting = True
+                self.tts_handler.synthesize_and_play("Един момент.")
+                while self.is_generating:
+                    time.sleep(0.1)
+            
+            self.is_waiting = False
+        
             self.is_generating = True
 
             # Adding the user's question to the message
@@ -117,7 +71,6 @@ class ConversationHandler:
                     event_handler=self.OpenAI_EventHandler(self),
                 ) as stream:
                     stream.until_done()
-                self.number_of_responses += 1
             finally:
                 self.is_generating = False
 
