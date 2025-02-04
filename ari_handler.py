@@ -7,9 +7,11 @@ from config import ARI_BASE_URL, ARI_USERNAME, ARI_PASSWORD, APP_NAME
 from utils import logger
 from media_receiver import MediaReceiver
 from openai_functions.OpenAIClient import openai_client
+from time import time
 
 active_channels = {}
 active_channels_lock = threading.Lock()
+active_ports = []
 
 def handle_stasis_start(channel_id):
     try:
@@ -45,8 +47,9 @@ def handle_stasis_start(channel_id):
                 src_ip = packet[IP].src
                 dst_port = packet[UDP].dport
                 
-                if src_ip.startswith("46.19.210") and 10000 <= dst_port <= 20000:
+                if src_ip.startswith("46.19.210") and 10000 <= dst_port <= 20000 and dst_port not in active_ports:
                     logger.info(f"Detected RTP Destination Port from {src_ip}: {dst_port}")
+                    active_ports.append(dst_port)
                     return dst_port
             return None
         
@@ -96,6 +99,9 @@ def cleanup_channel(channel_id):
             if channel_id in active_channels:
                 receiver = active_channels[channel_id]
                 receiver.stop_flag = True
+                if receiver.rtp_port in active_ports:
+                    active_ports.remove(receiver.rtp_port)
+                    logger.info(f"Removed RTP port {receiver.rtp_port} from active_ports")
                 receiver.cleanup()
                 del active_channels[channel_id]
                 
