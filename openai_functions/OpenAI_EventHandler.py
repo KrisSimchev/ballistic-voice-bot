@@ -31,7 +31,7 @@ class OpenAI_EventHandler(AssistantEventHandler):
                 self.current_sentence.rfind('?')
             )
             
-            if last_end != -1 and not self.is_interrupted:
+            if last_end != -1 and not self.conversation_handler.is_interrupted:
                 # Get the complete sentence
                 complete_sentence = self.current_sentence[:last_end + 1].strip()
                 # Keep the remaining text

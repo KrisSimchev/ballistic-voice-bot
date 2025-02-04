@@ -37,22 +37,22 @@ class MediaReceiver:
                 try:
                     sentence = result.channel.alternatives[0].transcript
                     is_final = result.is_final
+                    speech_final = result.speech_final
                     if sentence.strip():
                         self.conversation_handler.stop_speaking()
-
-                        current_time = time.time()
-
-                        self.conversation_handler.handle_transcript(
-                            sentence, 
-                            current_time
-                        )
-
                         if is_final:
+                            current_time = time.time()
+
+                            self.conversation_handler.handle_transcript(
+                                sentence, 
+                                current_time
+                            )
                             
                             logger.info(f"[Channel {self.channel_id}] Transcript: {sentence}")
                             
-                            # logger.info(f"[Channel {self.channel_id}] Detected end of speech")
-                            self.conversation_handler.generate_and_stream_test(current_time)
+                        if speech_final:
+                            logger.info(f"[Channel {self.channel_id}] Detected end of speech")
+                            self.conversation_handler.generate_and_stream(current_time)
                             
                 except (KeyError, AttributeError) as e:
                     logger.error(f"Error processing transcript: {e}")
@@ -74,8 +74,9 @@ class MediaReceiver:
                 encoding="linear16",
                 channels=1,
                 interim_results=True,
-                utterance_end_ms=550,
-                # endpointing=600,
+                utterance_end_ms=1000,
+                endpointing=600,
+                punctuate=True
             )
             
             if not self.dg_connection.start(options):

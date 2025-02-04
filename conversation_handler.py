@@ -56,7 +56,7 @@ class ConversationHandler:
 
             # Adding the user's question to the message
             message = self.openai_client.beta.threads.messages.create(
-                thread_id=self.openai_thread.id,
+                thread_id=self.openai_thread_id,
                 role="user",
                 content=self.accumulated_transcript
             )
@@ -67,10 +67,10 @@ class ConversationHandler:
             # Creating a stream for the response
             try:
                 with self.openai_client.beta.threads.runs.stream(
-                    thread_id=self.openai_thread.id,
-                    assistant_id=self.openai_assistant.id,
+                    thread_id=self.openai_thread_id,
+                    assistant_id=self.openai_assistant_id,
                     instructions="",
-                    event_handler=self.OpenAI_EventHandler(self),
+                    event_handler=OpenAI_EventHandler(self),
                 ) as stream:
                     stream.until_done()
             finally:
