@@ -7,7 +7,9 @@ from config import ARI_BASE_URL, ARI_USERNAME, ARI_PASSWORD, APP_NAME
 from utils import logger
 from media_receiver import MediaReceiver
 from openai_functions.OpenAIClient import openai_client
-from time import time
+from time import time, sleep
+from call_redirector import redirect_call
+
 
 active_channels = {}
 active_channels_lock = threading.Lock()
@@ -66,6 +68,13 @@ def handle_stasis_start(channel_id):
             logger.error(f"Could not determine RTP port for channel {channel_id}")
             return
         
+        if redirect_call(channel_id, "0899843988"):
+            logger.info(f"Call redirected successfully")
+            sleep(10)
+        else:
+            logger.error(f"Failed to redirect call")
+            return
+
         logger.info(f"Creating OPENAI thread")
         openai_thread = openai_client.get_client().beta.threads.create()
         openai_thread_id = openai_thread.id
