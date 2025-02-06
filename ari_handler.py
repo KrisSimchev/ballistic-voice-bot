@@ -8,7 +8,6 @@ from utils import logger
 from media_receiver import MediaReceiver
 from openai_functions.OpenAIClient import openai_client
 from time import time, sleep
-from call_redirector import redirect_call
 
 
 active_channels = {}

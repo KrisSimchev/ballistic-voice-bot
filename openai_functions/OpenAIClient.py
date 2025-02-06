@@ -39,7 +39,7 @@ class OpenAIClient:
                 vector_store_id=vector_store.id
 
                 file_paths = [
-                    "Knowledge.docx", 
+                    "openai_features/Knowledge.docx", 
                 ]
 
                 for path in file_paths:
