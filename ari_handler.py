@@ -9,26 +9,12 @@ from media_receiver import MediaReceiver
 from openai_functions.OpenAIClient import openai_client
 from time import time, sleep
 
-
 active_channels = {}
 active_channels_lock = threading.Lock()
 active_ports = []
 
 def handle_stasis_start(channel_id):
     try:
-        # Get the channel object from ARI
-        response = requests.get(
-            f"{ARI_BASE_URL}/channels/{channel_id}",
-            auth=(ARI_USERNAME, ARI_PASSWORD)
-        )
-        
-        if response.status_code != 200:
-            logger.error(f"Failed to get channel: {response.text}")
-            return
-        
-        channel = response.json()
-
-    
         response = requests.get(
             f"{ARI_BASE_URL}/channels/{channel_id}/rtp_statistics",
             auth=(ARI_USERNAME, ARI_PASSWORD)
@@ -75,7 +61,7 @@ def handle_stasis_start(channel_id):
         receiver = MediaReceiver(channel_id, openai_thread_id)
         logger.info(f"setting media receiver port {rtp_port}")
         receiver.rtp_port = rtp_port
-        
+        receiver.play_start_message()
         if not receiver.start_deepgram():
             logger.error(f"Failed to start Deepgram for channel {channel_id}")
             return

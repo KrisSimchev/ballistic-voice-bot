@@ -15,7 +15,6 @@ from config import (
     ARI_USERNAME,
     ARI_PASSWORD,
 )
-from scipy.signal import resample_poly
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +33,9 @@ class TTSHandler:
         self.playback_thread.start()
         
         os.makedirs(self.asterisk_sounds_dir, exist_ok=True)
+
+    def play_start_message(self):
+        self.audio_queue.append("start_message")
 
     def _get_playback_status(self, playback_id: str) -> Optional[str]:
         """Check the status of a playback through ARI."""
@@ -144,12 +146,6 @@ class TTSHandler:
 
                 # Increase volume
                 audio_array = np.clip(audio_array * 2.0, -32768, 32767).astype(np.int16)
-
-                # Downsample to 8 kHz
-                # orig_rate = 24000
-                # desired_rate = 8000
-                # audio_array_8k = resample_poly(audio_array_24k, up=1, down=3)
-                # audio_array_8k = audio_array_8k.astype(np.int16)
 
                 # Write WAV file
                 with wave.open(asterisk_wav_path, 'wb') as wf:

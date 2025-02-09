@@ -43,7 +43,7 @@ class OpenAI_EventHandler(AssistantEventHandler):
         
     @override
     def on_tool_call_created(self, tool_call):
-        logger.info(f"\nassistant > {tool_call.type}\n", flush=True)
+        logger.info(f"\nassistant > {tool_call.type}\n")
 
     @override
     def on_event(self, event):

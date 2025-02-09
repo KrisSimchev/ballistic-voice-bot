@@ -165,6 +165,3 @@ def get_orders_by_email(email):
     else:
         return f"Error: Status code {response.status_code}"
     
-
-def escalate_to_human():
-    pass
