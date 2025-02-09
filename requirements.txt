@@ -1,0 +1,9 @@
+deepgram-sdk==3.7.7
+elevenlabs==1.50.5
+noisereduce==3.0.3
+numpy==2.2.1
+openai==1.60.1
+requests==2.32.3
+scapy==2.6.1
+typing_extensions==4.12.2
+websocket-client==1.8.0
