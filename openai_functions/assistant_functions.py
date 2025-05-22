@@ -2,8 +2,11 @@ import requests
 import re
 from config import SHOPIFY_API_KEY, SHOPIFY_PASSWORD, SHOPIFY_API_VERSION
 
+#API_KEY = SHOPIFY_API_KEY
 API_KEY = SHOPIFY_API_KEY
+#PASSWORD = SHOPIFY_PASSWORD
 PASSWORD = SHOPIFY_PASSWORD
+#API_VERSION = SHOPIFY_API_VERSION
 API_VERSION = SHOPIFY_API_VERSION
 SHOP_NAME = 'ballistic-sport.myshopify.com'
 
@@ -100,12 +103,15 @@ def track_order(order_identifier):
 
     if isinstance(order_ids, str):
         return order_ids
-
+    
     order_info = []
     for order_id in order_ids:
         order_details = get_order_details_by_id(order_id)
         order_info.append(order_details)
 
+    if not order_info:
+        return "No order info found"
+    
     return order_info
 
 def get_orders_by_order_number(order_number):

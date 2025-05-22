@@ -34,6 +34,8 @@ class TTSHandler:
         
         os.makedirs(self.asterisk_sounds_dir, exist_ok=True)
 
+        self.play_start_message()
+
     def play_start_message(self):
         self.audio_queue.append("start_message")
 
@@ -164,3 +166,7 @@ class TTSHandler:
         with self.queue_lock:
             self.audio_queue.append(base_name)
             logger.info(f"Added '{base_name}' to the playback queue. Queue size: {len(self.audio_queue)}")
+    
+    def play_thinking_sound(self):
+        self.audio_queue.append("thinking")
+

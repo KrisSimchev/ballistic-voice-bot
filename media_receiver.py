@@ -12,7 +12,7 @@ from conversation_handler import ConversationHandler
 from tts_handler import TTSHandler
 
 class MediaReceiver:
-    def __init__(self, channel_id, openai_thread_id,  codec="PCMU"):
+    def __init__(self, channel_id, openai_thread_id, caller_number, codec="PCMU"):
         self.channel_id = channel_id
         self.codec = codec 
         self.rtp_port = 0
@@ -24,7 +24,7 @@ class MediaReceiver:
         self.buffer = bytearray()
         self.CHUNK_SIZE = 1920  # 240 ms at 8kHz mono
         self.volume_multiplier = 1.85  # Slight volume boost
-        self.conversation_handler = ConversationHandler(openai_thread_id, TTSHandler(channel_id))
+        self.conversation_handler = ConversationHandler(openai_thread_id, caller_number, TTSHandler(channel_id))
         self.last_transcript_time = time.time()
         self.openai_thread_id = openai_thread_id
     
@@ -38,6 +38,10 @@ class MediaReceiver:
                     sentence = result.channel.alternatives[0].transcript
                     is_final = result.is_final
                     speech_final = result.speech_final
+                    
+                    # Add debug logging for all transcripts, even empty ones
+                    logger.debug(f"[Channel {self.channel_id}] Raw transcript: '{sentence}', is_final: {is_final}, speech_final: {speech_final}")
+                    
                     if sentence.strip():
                         self.conversation_handler.stop_speaking()
                         if is_final:
@@ -52,7 +56,13 @@ class MediaReceiver:
                             
                         if speech_final:
                             logger.info(f"[Channel {self.channel_id}] Detected end of speech")
+                            # Add debug logging before generating response
+                            logger.debug(f"[Channel {self.channel_id}] Accumulated transcript before generating: '{self.conversation_handler.accumulated_transcript}'")
                             self.conversation_handler.generate_and_stream(current_time)
+                    else:
+                        # Log when we receive empty transcripts
+                        logger.debug(f"[Channel {self.channel_id}] Received empty transcript")
+                        self.conversation_handler.generate_and_stream(time.time())
                             
                 except (KeyError, AttributeError) as e:
                     logger.error(f"Error processing transcript: {e}")
@@ -60,7 +70,7 @@ class MediaReceiver:
             def on_error(client, error, **kwargs):
                 logger.error(f"Deepgram error for channel {self.channel_id}: {error}")
             
-            def on_close(client,**kwargs):
+            def on_close(client, event, **kwargs):
                 logger.info(f"Deepgram connection closed for channel {self.channel_id}")
             
             self.dg_connection.on(LiveTranscriptionEvents.Transcript, on_transcript)
@@ -74,9 +84,12 @@ class MediaReceiver:
                 encoding="linear16",
                 channels=1,
                 interim_results=True,
-                utterance_end_ms=1000,
-                endpointing=600,
-                punctuate=True
+                utterance_end_ms=1500,  # Increased from 1000 to allow more time between phrases
+                endpointing=800,  # Increased from 600 to be more lenient with pauses
+                punctuate=True,
+                vad_events=True,  # Enable Voice Activity Detection events
+                keywords=["здравейте", "благодаря", "довиждане"],  # Add common keywords to improve recognition
+                smart_format=True  # Enable smart formatting
             )
             
             if not self.dg_connection.start(options):
@@ -112,15 +125,15 @@ class MediaReceiver:
         try:
             audio_array = np.frombuffer(audio_data, dtype=np.int16)
             
-            # High-pass filter to remove low-frequency noise
-            alpha = 0.95
+            # High-pass filter to remove low-frequency noise - increase alpha for speakerphone
+            alpha = 0.97  # Increased from 0.95 to filter more low-frequency noise
             shifted = np.roll(audio_array, 1)
             highpassed = audio_array.astype(np.float32) - alpha * shifted.astype(np.float32)
             highpassed[0] = audio_array[0]  # Avoid initial jump
             audio_array = highpassed.astype(np.int16)
 
-            # Noise reduction
-            reduced_noise = nr.reduce_noise(y=audio_array, sr=8000, prop_decrease=0.7)
+            # Noise reduction - increase prop_decrease for speakerphone
+            reduced_noise = nr.reduce_noise(y=audio_array, sr=8000, prop_decrease=0.8)  # Increased from 0.7
 
             # Convert back to bytes
             processed_data = reduced_noise.astype(np.int16).tobytes()
@@ -130,15 +143,16 @@ class MediaReceiver:
             if avg_val != 0:
                 processed_data = audioop.bias(processed_data, 2, -avg_val)
 
-            # Dynamic gain control (AGC)
-            target_rms = 1500
+            # Dynamic gain control (AGC) - increase target_rms for speakerphone
+            target_rms = 2000  # Increased from 1500 for better sensitivity
             current_rms = audioop.rms(processed_data, 2)
             if current_rms > 0:
                 ratio = float(target_rms) / current_rms
                 processed_data = audioop.mul(processed_data, 2, ratio)
 
-            # Apply a slight volume boost after dynamic gain control
-            processed_data = audioop.mul(processed_data, 2, self.volume_multiplier)
+            # Apply a higher volume boost for speakerphone
+            volume_boost = 2.0  # Increased from 1.85
+            processed_data = audioop.mul(processed_data, 2, volume_boost)
 
             return processed_data
 

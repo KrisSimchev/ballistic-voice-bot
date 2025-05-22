@@ -13,7 +13,7 @@ active_channels = {}
 active_channels_lock = threading.Lock()
 active_ports = []
 
-def handle_stasis_start(channel_id):
+def handle_stasis_start(channel_id, caller_number):
     try:
         response = requests.get(
             f"{ARI_BASE_URL}/channels/{channel_id}/rtp_statistics",
@@ -58,10 +58,10 @@ def handle_stasis_start(channel_id):
         openai_thread_id = openai_thread.id
 
         logger.info(f"Initiazlizing Media Receiver")
-        receiver = MediaReceiver(channel_id, openai_thread_id)
+        receiver = MediaReceiver(channel_id, openai_thread_id, caller_number)
         logger.info(f"setting media receiver port {rtp_port}")
         receiver.rtp_port = rtp_port
-        receiver.play_start_message()
+
         if not receiver.start_deepgram():
             logger.error(f"Failed to start Deepgram for channel {channel_id}")
             return
@@ -114,9 +114,12 @@ def on_ari_message(ws, message):
         logger.info(f"Received ARI event: {event_type}")
         
         if event_type == "StasisStart":
-            channel_id = event.get('channel', {}).get('id')
+            channel = event.get('channel', {})
+            channel_id = channel.get('id')
+            caller_number = channel.get('caller', {}).get('number')
+            logger.info(f"Caller number: {caller_number}")
             if channel_id:
-                handle_stasis_start(channel_id)
+                handle_stasis_start(channel_id, caller_number)
                 
         elif event_type == "StasisEnd":
             channel_id = event.get('channel', {}).get('id')

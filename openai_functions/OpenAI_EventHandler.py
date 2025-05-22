@@ -4,7 +4,8 @@ from openai import OpenAI
 from utils import logger
 import json
 from openai_functions.OpenAIClient import openai_client
-from openai_functions.assistant_functions import track_order, escalate_to_human
+from openai_functions.assistant_functions import track_order
+import time
 
 class OpenAI_EventHandler(AssistantEventHandler):
     def __init__(self, conversation_handler):
@@ -58,9 +59,15 @@ class OpenAI_EventHandler(AssistantEventHandler):
             
         for tool in data.required_action.submit_tool_outputs.tool_calls:
             if tool.function.name == "track_order":
+                self.conversation_handler.tts_handler.synthesize_and_play("Проследявам поръчката Ви... Един момент..")
                 arguments = json.loads(tool.function.arguments)
                 order_identifier = arguments.get("order_identifier")
-                tool_outputs.append({"tool_call_id": tool.id, "output": track_order(order_identifier)})
+                logger.info(f"Tracking order: {order_identifier}")
+                
+                order_info = track_order(order_identifier)
+                logger.info(f"Order info: {order_info}")
+                tool_outputs.append({"tool_call_id": tool.id, "output": order_info})
+                
             elif tool.function.name == "escalate_to_human":
                 logger.info("Assistant requested to end the conversation.")
                 escalate_to_human()
@@ -75,7 +82,7 @@ class OpenAI_EventHandler(AssistantEventHandler):
             thread_id=self.current_run.thread_id,
             run_id=self.current_run.id,
             tool_outputs=tool_outputs,
-            event_handler=OpenAI_EventHandler(),
+            event_handler=OpenAI_EventHandler(self.conversation_handler),
         ) as stream:
             stream.until_done()
 

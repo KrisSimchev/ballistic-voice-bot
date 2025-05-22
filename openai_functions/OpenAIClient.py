@@ -59,7 +59,7 @@ class OpenAIClient:
 
                 assistant = self.client.beta.assistants.create(
                     instructions=assistant_instructions,
-                    model="gpt-4o",
+                    model="gpt-4.1",
                     tools=[{
                         "type": "file_search",
                         "type": "function",
@@ -71,7 +71,7 @@ class OpenAIClient:
                                 "properties": {
                                     "order_identifier": {
                                         "type": "string",
-                                        "description": "The customer's either email, phone number or order number"
+                                        "description": "The customer's either email, phone number or order number (MOST OF THE TIME IT IS A PHONE NUMBER)"
                                     }
                                 },
                                 "required": [
@@ -107,6 +107,26 @@ class OpenAIClient:
     def get_assistant_id(self):
         """Returns the assistant ID."""
         return self.assistant_id
+
+    def update_assistant_with_vector_store(self, vector_store_id):
+        """
+        Updates the assistant to use a vector store for file search
+        """
+        try:
+            self.client.beta.assistants.update(
+                assistant_id=self.assistant_id,
+                tool_resources={
+                    "file_search": {
+                        "vector_store_ids": [vector_store_id],
+                        "use_citations": False
+                    }
+                }
+            )
+            logger.info(f"Updated assistant with vector store: {vector_store_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error updating assistant with vector store: {e}")
+            return False
 
 # Global instance
 openai_client = OpenAIClient()
