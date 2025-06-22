@@ -59,7 +59,7 @@ class OpenAIClient:
 
                 assistant = self.client.beta.assistants.create(
                     instructions=assistant_instructions,
-                    model="gpt-4.1",
+                    model="gpt-4o",
                     tools=[{
                         "type": "file_search",
                         "type": "function",
@@ -71,7 +71,7 @@ class OpenAIClient:
                                 "properties": {
                                     "order_identifier": {
                                         "type": "string",
-                                        "description": "The customer's either email, phone number or order number (MOST OF THE TIME IT IS A PHONE NUMBER)"
+                                        "description": "The customer's either email, phone number or order number"
                                     }
                                 },
                                 "required": [

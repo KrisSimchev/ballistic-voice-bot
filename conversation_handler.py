@@ -8,6 +8,7 @@ import re
 from utils import logger
 from openai_functions.OpenAIClient import openai_client
 from openai_functions.OpenAI_EventHandler import OpenAI_EventHandler
+from openai_functions.prompts import assistant_instructions
 
 class ConversationHandler:
     def __init__(self, openai_thread_id, caller_number, tts_handler: TTSHandler):
@@ -78,7 +79,7 @@ class ConversationHandler:
                 with self.openai_client.beta.threads.runs.stream(
                     thread_id=self.openai_thread_id,
                     assistant_id=self.openai_assistant_id,
-                    instructions=f"The person is calling from this number: {int(self.caller_number)}",
+                    instructions=assistant_instructions + f"The person is calling from this number: {int(self.caller_number)}",
                     event_handler=OpenAI_EventHandler(self),
                 ) as stream:
                     stream.until_done()
